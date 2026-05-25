@@ -1,0 +1,32 @@
+# Dependencies (installed with `npm install`, never committed)
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# Production build
+/build
+
+# Environment variables — THIS IS IMPORTANT.
+# .env.local holds your secret API key. It must NEVER be committed to git.
+.env.local
+.env*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating system files
+.DS_Store
+*.pem
+
+# Editor folders
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

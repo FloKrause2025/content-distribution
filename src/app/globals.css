@@ -1,0 +1,28 @@
+/*
+ * src/app/globals.css
+ * ---------------------------------------------------------------------------
+ * Global styles for the whole app. The three @tailwind lines below pull in
+ * Tailwind's base styles, component classes, and utility classes. Most styling
+ * is done with Tailwind utility classes directly in the components, so there is
+ * very little custom CSS here.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  /* A light neutral-grey background for the whole app. */
+  background-color: #f9fafb; /* gray-50 */
+  color: #111827; /* gray-900 */
+}
+
+/* A simple spinning animation used by the loading indicator. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin 0.8s linear infinite;
+}
