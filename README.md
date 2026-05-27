@@ -260,9 +260,14 @@ docs/                 Extra guides, like how to add a channel
 
 This is an **MVP** (a first working version). On purpose, it does **not** include:
 
-- **No saving on Vercel.** Editing/uploading knowledge base files works on your
-  own computer but won't persist on Vercel, because Vercel's file system is
-  read-only. (A future version would use a database or cloud storage.)
+- **Knowledge base persistence on Vercel requires a Blob store.** Locally
+  (`npm run dev`) editing/uploading docs just works. In production the app uses
+  **Vercel Blob** to persist edits — so you must create a Blob store in your
+  Vercel project (Storage → Create → Blob), which adds a `BLOB_READ_WRITE_TOKEN`
+  automatically; then redeploy. Without that token the app still reads its
+  bundled starter docs, but saving fails (Vercel's file system is read-only).
+  Blob documents are stored at public (but unguessable-prefixed) URLs — fine for
+  brand guidelines, but don't put secrets in them.
 - **No accounts or login.** Anyone with the link can use it.
 - **No database.** Pipeline progress lives only in your browser — if you
   refresh the page mid-pipeline, you start over. That's expected.
