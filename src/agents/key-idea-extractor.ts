@@ -7,8 +7,10 @@
  * EXACTLY 4 key ideas — one for each content pillar. Each key idea becomes a
  * card the user reviews/edits before we generate channel content from it.
  *
- * The four pillars (the agency's "Cascade" framework) are described directly in
- * the prompt below so the model always returns one idea per pillar.
+ * The four pillars (the agency's "Cascade" framework) are defined in the
+ * editable knowledge-base doc `cascade-framework.md`, which is injected into the
+ * prompt. The prompt here only fixes the pillar ids, their order, and the output
+ * shape — so the *meaning* of a pillar can be tuned in the doc without code.
  *
  * Runs on the SERVER only (called from an API route).
  */
@@ -75,12 +77,9 @@ export async function extractKeyIdeas(
 
   const channelOptions = CHANNELS.map((c) => `"${c.id}" (${c.label})`).join(", ");
 
-  const taskPrompt = `Using the hero asset and its analysis below, extract EXACTLY 4 key ideas — one for each of these content pillars:
+  const taskPrompt = `Using the hero asset and its analysis below, extract EXACTLY 4 key ideas — one for each content pillar.
 
-1. perspectives — A stance or hot take derived from the hero content. Something opinionated that sparks conversation.
-2. proof — A proof point, data, case study, or industry/ecosystem reference that adds credibility.
-3. creative_work — How the work was done: a process insight, methodology, or showcase angle.
-4. differentiator — What makes this approach unique. The "why us" or "why this way" angle.
+The four content pillars — and what makes a strong key idea for each — are defined in the Cascade Framework reference document provided to you. Produce one idea per pillar, using these exact pillar ids in this order: perspectives, proof, creative_work, differentiator.
 
 HERO ANALYSIS:
 - Main argument: ${heroAnalysis.mainArgument}
