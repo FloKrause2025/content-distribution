@@ -56,18 +56,19 @@ interface AngleSpec {
 async function decomposeAngles(
   keyIdea: KeyIdea,
   channelDef: ChannelDefinition,
+  heroContent: string,
   projectSlug: string,
 ): Promise<AngleSpec[]> {
   const isCarousel = channelDef.id === "instagram-carousel";
 
-  const systemIntro = `You are a senior content strategist for ${BRAND_NAME}. Given a key idea and the channel playbook provided above, you break it into the DISTINCT publishable angles it can yield as ${channelDef.label}s. Most rich key ideas contain MORE THAN ONE publishable angle — your job is to find them, not to minimise them. Only a genuinely single-point idea yields one angle.`;
+  const systemIntro = `You are a senior content strategist for ${BRAND_NAME}. Working from the ORIGINAL HERO ASSET (not just the compressed key idea), you identify the genuinely DISTINCT publishable angles it can yield as ${channelDef.label}s. Judge each angle on its merits: keep it only if it makes a point the others don't and is well-supported by the hero asset. Some ideas yield three strong angles; many yield only one. Never invent or pad angles to hit a number.`;
 
   const taskPrompt = `Identify the DISTINCT publishable angles in the key idea below that can each stand alone as a focused ${channelDef.label} (${channelDef.format}).
 
 RULES:
 - An angle is a post that could stand alone, with its own hook and exactly ONE point. Two angles are distinct if each could be published separately without repeating the other's main point.
-- Treat the core argument AND each supporting point as a CANDIDATE angle. For each, decide: is it a distinct standalone take, or just supporting detail for another? When the supporting points are themselves distinct claims (a problem, a different model, a reframe, a proof point), split them into separate angles.
-- Bias toward multiplication — turning one idea into several focused posts is the whole point of this product. When torn between 1 and 2 angles, choose 2, as long as each is genuinely standalone. Return only 1 when the idea is truly a single point.
+- Treat the core argument and each supporting point as a CANDIDATE angle, then KEEP only the ones that are genuinely distinct standalone takes. Drop any candidate that is just supporting detail for another, or that would overlap an angle you've already kept. Two kept angles must never share the same main point.
+- Judge distinctness honestly against the hero asset. If the idea genuinely contains only one angle, return exactly 1 and SKIP the rest — do NOT force or pad to reach 2 or 3. One strong, distinct post beats three overlapping ones.
 - Never split ONE claim into fragments, and never return more than 3.${isCarousel ? `
 - For this Instagram Carousel specifically, each angle MUST independently meet the playbook's carousel bar — a drawable structure (~5–8 slides), a strong cover hook, and a novel take. Skip any angle that wouldn't qualify on its own; returning fewer than 3 (or even 1) is correct when others don't meet the bar.` : ""}
 
@@ -75,6 +76,13 @@ EXAMPLE — a key idea whose core argument is "lead with outcomes, not features,
   - "Lead with outcomes, not features"
   - "The 3 things buyers decide in 10 seconds"
   - "Clarity is the differentiator"
+
+COUNTER-EXAMPLE — a key idea whose core argument is "your brand lags your product and that gap quietly costs you sales credibility," whose supporting points all restate that one cost, contains only ONE genuine angle. Return exactly 1; do not manufacture a second or third by rephrasing it.
+
+ORIGINAL HERO ASSET (judge distinct angles against THIS rich source, not just the summary below):
+"""
+${heroContent}
+"""
 
 KEY IDEA:
 - Pillar: ${keyIdea.pillarLabel}
@@ -139,6 +147,7 @@ async function writeAnglePost(
   keyIdea: KeyIdea,
   channelDef: ChannelDefinition,
   angle: AngleSpec,
+  otherAngles: AngleSpec[],
   heroContent: string,
   projectSlug: string,
 ): Promise<ChannelContent> {
@@ -152,6 +161,9 @@ ANGLE FOCUS (this is what the post is about):
 - Label: ${angle.label || "(no label provided)"}
 - Point: ${angle.point}
 
+${otherAngles.length > 0 ? `OTHER ANGLES (each is being written as its OWN separate post — do NOT cover or overlap any of these):
+${otherAngles.map((a) => `  - ${a.label || a.point}`).join("\n")}
+` : ""}
 KEY IDEA (background context only — do NOT try to cover it all):
 - Pillar: ${keyIdea.pillarLabel}
 - Core argument: ${keyIdea.coreArgument}
@@ -163,7 +175,7 @@ ORIGINAL HERO CONTENT (for reference only — do not copy verbatim):
 ${heroContent}
 """
 
-IMPORTANT: This post must cover ONLY the angle above. Do NOT try to cover the rest of the key idea — other angles are being written as separate posts. Stay tight to the angle's point.
+IMPORTANT: This post must cover ONLY the angle above. Do NOT cover the rest of the key idea, and do NOT touch the OTHER ANGLES listed — those are separate posts. If two posts would share the same hook, opening line, or supporting point, this one is wrong. Make this post unmistakably distinct from the others.
 
 Write the ${channelDef.format} now, following the playbook precisely.
 
@@ -240,12 +252,19 @@ export async function generateChannelPosts(
   }
 
   // 1. Decomposition (1 Claude call).
-  const angles = await decomposeAngles(keyIdea, channelDef, projectSlug);
+  const angles = await decomposeAngles(keyIdea, channelDef, heroContent, projectSlug);
 
   // 2. Write each angle in parallel (N Claude calls).
   const posts = await Promise.all(
-    angles.map((angle) =>
-      writeAnglePost(keyIdea, channelDef, angle, heroContent, projectSlug),
+    angles.map((angle, i) =>
+      writeAnglePost(
+        keyIdea,
+        channelDef,
+        angle,
+        angles.filter((_, j) => j !== i),
+        heroContent,
+        projectSlug,
+      ),
     ),
   );
 
