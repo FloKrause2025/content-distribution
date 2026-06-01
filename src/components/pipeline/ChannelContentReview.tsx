@@ -8,6 +8,13 @@
  *   - read a styled preview
  *   - edit the text inline
  *   - copy it to the clipboard
+ *
+ * Instagram Carousel posts also carry a separate `caption` field (the text
+ * posted alongside the slides). When present it gets its own labeled section
+ * beneath the slides, with its own Edit and Copy controls — mirroring the
+ * main content. Other channels don't have a caption, so the section never
+ * renders for them.
+ *
  * There are also "Copy All" and "Export as Markdown" buttons for the whole set.
  */
 "use client";
@@ -19,11 +26,14 @@ import { Badge } from "@/components/ui/Badge";
 import { TextArea } from "@/components/ui/TextArea";
 import type { ChannelContent, KeyIdea } from "@/agents/types";
 
+/** The two inline-editable fields on a content piece. */
+type EditableField = "content" | "caption";
+
 interface ChannelContentReviewProps {
   content: ChannelContent[];
   keyIdeas: KeyIdea[];
-  /** Save an inline edit to one content piece. */
-  onUpdateContent: (id: string, newContent: string) => void;
+  /** Save an inline edit to one editable field on a content piece. */
+  onUpdateField: (id: string, field: EditableField, value: string) => void;
   /** Start the whole pipeline over from step 1. */
   onStartOver: () => void;
 }
@@ -42,9 +52,12 @@ function buildMarkdown(content: ChannelContent[], keyIdeas: KeyIdea[]): string {
         "",
         piece.content,
         "",
-        "---",
-        "",
       );
+      // Caption is its own section, included only when the channel produces one.
+      if (piece.caption !== undefined) {
+        lines.push("**Caption:**", "", piece.caption, "");
+      }
+      lines.push("---", "");
     }
   }
   return lines.join("\n");
@@ -61,28 +74,38 @@ function buildPlainText(content: ChannelContent[], keyIdeas: KeyIdea[]): string 
       blocks.push(
         `\n[${piece.platform} — ${piece.format}]\n${piece.content}\n`,
       );
+      if (piece.caption !== undefined) {
+        blocks.push(`Caption:\n${piece.caption}\n`);
+      }
     }
   }
   return blocks.join("\n");
 }
 
+/**
+ * Each piece can have two independently editable sections (content + caption),
+ * so we track edit/copy state by a composite "<piece-id>:<field>" key.
+ */
+function fieldKey(id: string, field: EditableField): string {
+  return `${id}:${field}`;
+}
+
 export function ChannelContentReview({
   content,
   keyIdeas,
-  onUpdateContent,
+  onUpdateField,
   onStartOver,
 }: ChannelContentReviewProps) {
-  // Track which piece is currently being edited (by id), and which was just
-  // copied (so we can show a brief "Copied!" confirmation).
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Which section is currently being edited (composite key) and which was just
+  // copied (so we can flash "Copied!" for ~1.5s).
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Copy a single string to the clipboard and flash a confirmation.
-  async function copy(text: string, id: string) {
+  async function copy(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 1500);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
     } catch {
       alert("Copy failed — your browser blocked clipboard access.");
     }
@@ -124,7 +147,7 @@ export function ChannelContentReview({
               copy(buildPlainText(content, keyIdeas), "__all__")
             }
           >
-            {copiedId === "__all__" ? "Copied!" : "Copy All"}
+            {copiedKey === "__all__" ? "Copied!" : "Copy All"}
           </Button>
           <Button variant="secondary" onClick={exportMarkdown}>
             Export as Markdown
@@ -144,10 +167,15 @@ export function ChannelContentReview({
             {content
               .filter((c) => c.keyIdeaId === idea.id)
               .map((piece) => {
-                const isEditing = editingId === piece.id;
+                const contentKey = fieldKey(piece.id, "content");
+                const captionKey = fieldKey(piece.id, "caption");
+                const editingContent = editingKey === contentKey;
+                const editingCaption = editingKey === captionKey;
+                const hasCaption = piece.caption !== undefined;
+
                 return (
                   <Card key={piece.id}>
-                    {/* Header: platform + format badges and actions */}
+                    {/* Header: platform + format badges and content actions */}
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Badge
@@ -170,32 +198,80 @@ export function ChannelContentReview({
                         <Button
                           variant="ghost"
                           onClick={() =>
-                            setEditingId(isEditing ? null : piece.id)
+                            setEditingKey(editingContent ? null : contentKey)
                           }
                         >
-                          {isEditing ? "Done" : "Edit"}
+                          {editingContent ? "Done" : "Edit"}
                         </Button>
                         <Button
                           variant="ghost"
-                          onClick={() => copy(piece.content, piece.id)}
+                          onClick={() => copy(piece.content, contentKey)}
                         >
-                          {copiedId === piece.id ? "Copied!" : "Copy"}
+                          {copiedKey === contentKey ? "Copied!" : "Copy"}
                         </Button>
                       </div>
                     </div>
 
                     {/* Body: editable textarea or styled preview */}
-                    {isEditing ? (
+                    {editingContent ? (
                       <TextArea
                         value={piece.content}
                         onChange={(e) =>
-                          onUpdateContent(piece.id, e.target.value)
+                          onUpdateField(piece.id, "content", e.target.value)
                         }
                         rows={12}
                       />
                     ) : (
                       <div className="whitespace-pre-wrap rounded-lg bg-gray-50 p-4 text-sm text-gray-800">
                         {piece.content}
+                      </div>
+                    )}
+
+                    {/* Caption section — only for channels that produce one. */}
+                    {hasCaption && (
+                      <div className="mt-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Caption
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              onClick={() =>
+                                setEditingKey(
+                                  editingCaption ? null : captionKey,
+                                )
+                              }
+                            >
+                              {editingCaption ? "Done" : "Edit"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() =>
+                                copy(piece.caption ?? "", captionKey)
+                              }
+                            >
+                              {copiedKey === captionKey ? "Copied!" : "Copy"}
+                            </Button>
+                          </div>
+                        </div>
+                        {editingCaption ? (
+                          <TextArea
+                            value={piece.caption ?? ""}
+                            onChange={(e) =>
+                              onUpdateField(
+                                piece.id,
+                                "caption",
+                                e.target.value,
+                              )
+                            }
+                            rows={6}
+                          />
+                        ) : (
+                          <div className="whitespace-pre-wrap rounded-lg bg-gray-50 p-4 text-sm text-gray-800">
+                            {piece.caption}
+                          </div>
+                        )}
                       </div>
                     )}
 

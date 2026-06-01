@@ -154,9 +154,16 @@ export default function PipelinePage() {
   }
 
   // -------------------- STEP 3 helpers ------------------------------------
-  function updateContent(id: string, newContent: string) {
+  // Generalized so the user can edit either the main content or the (optional)
+  // Instagram caption. `field` is "content" | "caption"; the same handler
+  // covers both — anything else is rejected at the type level.
+  function updateField(
+    id: string,
+    field: "content" | "caption",
+    value: string,
+  ) {
     setContent((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, content: newContent } : c)),
+      prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)),
     );
   }
 
@@ -215,7 +222,7 @@ export default function PipelinePage() {
           <ChannelContentReview
             content={content}
             keyIdeas={keyIdeas}
-            onUpdateContent={updateContent}
+            onUpdateField={updateField}
             onStartOver={startOver}
           />
         )}

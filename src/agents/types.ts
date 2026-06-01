@@ -83,14 +83,6 @@ export const CHANNELS: ChannelDefinition[] = [
     playbookDoc: "playbook-instagram",
     suggestedForPillars: ["proof", "creative_work", "differentiator"],
   },
-  {
-    id: "instagram-reel",
-    platform: "Instagram",
-    label: "Instagram Reel",
-    format: "Reel Script",
-    playbookDoc: "playbook-instagram",
-    suggestedForPillars: ["perspectives", "creative_work"],
-  },
 ];
 
 /** Look up a single channel definition by its id. Returns undefined if unknown. */
@@ -165,11 +157,17 @@ export interface ChannelContent {
   channel: string; // The channel id.
   channelLabel: string; // Human-friendly channel label.
   platform: string; // "LinkedIn" | "Instagram".
-  format: string; // "Founder Post" | "Carousel" | "Reel Script".
+  format: string; // "Founder Post" | "Carousel".
   content: string; // The full generated content.
   hookLine: string; // The opening hook extracted.
   cta: string; // The call-to-action extracted.
   estimatedLength: string; // e.g. "1,200 characters" or "7 slides".
+  /**
+   * Instagram caption that hooks the reader into the carousel.
+   * Set ONLY for the Instagram Carousel channel; left undefined for every
+   * other channel so they remain entirely unaffected by this field.
+   */
+  caption?: string;
 }
 
 // ---------------------------------------------------------------------------

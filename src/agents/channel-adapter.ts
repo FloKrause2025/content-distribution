@@ -35,6 +35,10 @@ export async function generateChannelContent(
     throw new Error(`Unknown channel "${channel}".`);
   }
 
+  // Instagram Carousels get a dedicated `caption` field in the JSON output (the
+  // text posted alongside the slides). Every other channel is unaffected.
+  const isCarousel = channelDef.id === "instagram-carousel";
+
   const systemIntro = `You are an expert social media content writer for ${BRAND_NAME}. Your task is to take a single key idea and write a ready-to-publish ${channelDef.label}. Follow the format, tone, structure, and examples in the channel playbook EXACTLY. The output must be something the team can copy, paste, and publish with minimal editing.`;
 
   const taskPrompt = `Create a ${channelDef.label} (${channelDef.format}) from the key idea below.
@@ -57,8 +61,11 @@ Return a JSON object with EXACTLY these fields:
   "content": "the full, ready-to-publish content (use \\n for line breaks; for a carousel, label each slide)",
   "hookLine": "the single opening hook line of the content",
   "cta": "the call-to-action at the end of the content",
-  "estimatedLength": "a short size estimate, e.g. '1,200 characters' for a post or '7 slides' for a carousel"
-}
+  "estimatedLength": "a short size estimate, e.g. '1,200 characters' for a post or '7 slides' for a carousel"${isCarousel ? `,
+  "caption": "the Instagram caption that hooks the reader into the carousel — the text posted alongside the slides, NOT the slide text itself"` : ""}
+}${isCarousel ? `
+
+IMPORTANT: For this Instagram Carousel, the "content" field MUST contain ONLY the labeled slides. The caption MUST go in the separate "caption" field above and MUST NOT also appear inside "content".` : ""}
 
 ${JSON_ONLY_INSTRUCTION}`;
 
@@ -80,6 +87,7 @@ ${JSON_ONLY_INSTRUCTION}`;
     hookLine?: string;
     cta?: string;
     estimatedLength?: string;
+    caption?: string;
   }>(raw, `channel-adapter:${channel}`);
 
   return {
@@ -93,5 +101,8 @@ ${JSON_ONLY_INSTRUCTION}`;
     hookLine: parsed.hookLine ?? "",
     cta: parsed.cta ?? "",
     estimatedLength: parsed.estimatedLength ?? "",
+    // Caption is set ONLY for the Instagram Carousel; left undefined elsewhere
+    // so non-carousel channels remain entirely unaffected.
+    ...(isCarousel ? { caption: parsed.caption ?? "" } : {}),
   };
 }
