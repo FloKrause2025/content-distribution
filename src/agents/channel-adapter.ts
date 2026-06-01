@@ -60,15 +60,21 @@ async function decomposeAngles(
 ): Promise<AngleSpec[]> {
   const isCarousel = channelDef.id === "instagram-carousel";
 
-  const systemIntro = `You are a senior content strategist for ${BRAND_NAME}. Given a key idea and the channel playbook provided above, you identify the DISTINCT publishable angles the idea can yield as ${channelDef.label}s. You are conservative: a tight idea legitimately yields one angle.`;
+  const systemIntro = `You are a senior content strategist for ${BRAND_NAME}. Given a key idea and the channel playbook provided above, you break it into the DISTINCT publishable angles it can yield as ${channelDef.label}s. Most rich key ideas contain MORE THAN ONE publishable angle — your job is to find them, not to minimise them. Only a genuinely single-point idea yields one angle.`;
 
   const taskPrompt = `Identify the DISTINCT publishable angles in the key idea below that can each stand alone as a focused ${channelDef.label} (${channelDef.format}).
 
 RULES:
-- Return BETWEEN 1 AND 3 angles. Only as many as are genuinely distinct.
-- Do NOT fragment a single argument into pieces. If the key idea is one tight argument, return exactly 1 angle.
-- Do NOT pad to reach 3. Fewer is better than forced.${isCarousel ? `
+- An angle is a post that could stand alone, with its own hook and exactly ONE point. Two angles are distinct if each could be published separately without repeating the other's main point.
+- Treat the core argument AND each supporting point as a CANDIDATE angle. For each, decide: is it a distinct standalone take, or just supporting detail for another? When the supporting points are themselves distinct claims (a problem, a different model, a reframe, a proof point), split them into separate angles.
+- Bias toward multiplication — turning one idea into several focused posts is the whole point of this product. When torn between 1 and 2 angles, choose 2, as long as each is genuinely standalone. Return only 1 when the idea is truly a single point.
+- Never split ONE claim into fragments, and never return more than 3.${isCarousel ? `
 - For this Instagram Carousel specifically, each angle MUST independently meet the playbook's carousel bar — a drawable structure (~5–8 slides), a strong cover hook, and a novel take. Skip any angle that wouldn't qualify on its own; returning fewer than 3 (or even 1) is correct when others don't meet the bar.` : ""}
+
+EXAMPLE — a key idea whose core argument is "lead with outcomes, not features," with supporting points "features-first forces the buyer to do extra work," "buyers need three things immediately (what world this makes possible, team credibility, problem urgency)," and "clarity is its own differentiation," should yield THREE distinct angles:
+  - "Lead with outcomes, not features"
+  - "The 3 things buyers decide in 10 seconds"
+  - "Clarity is the differentiator"
 
 KEY IDEA:
 - Pillar: ${keyIdea.pillarLabel}
@@ -80,7 +86,7 @@ Return a JSON object with EXACTLY this shape:
 {
   "angles": [
     {
-      "label": "a 3-7 word label for the angle (e.g. 'The hidden cost', 'What buyers actually need')",
+      "label": "a short, plain 3-6 word DESCRIPTOR of the angle's single point, for navigating the cascade in the UI — NOT a hook or slogan. No formulas like 'Stop X, Start Y' or 'The secret to...'. e.g. 'Lead with outcomes, not features', 'The 10-second buyer test', 'Clarity as differentiation'",
       "point": "the single sharp point this post will make, 1-2 sentences"
     }
   ]
