@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { generateChannelContent } from "@/agents/channel-adapter";
+import { generateChannelPosts } from "@/agents/channel-adapter";
 import { DEFAULT_PROJECT_SLUG } from "@/lib/knowledge-base";
 import type { ChannelContent, KeyIdea } from "@/agents/types";
 
@@ -39,13 +39,14 @@ export async function POST(request: Request) {
     const projectSlug = body.projectSlug ?? DEFAULT_PROJECT_SLUG;
     const heroContent = body.heroContent;
 
-    // Build a flat list of generation jobs (one per idea × channel).
-    const jobs: Array<Promise<ChannelContent>> = [];
+    // Build one job per (idea × channel). Each job decomposes the key idea into
+    // 1–3 angles and writes one focused post per angle, returning an array.
+    const jobs: Array<Promise<ChannelContent[]>> = [];
     for (const item of body.items) {
       if (!item.keyIdea || !Array.isArray(item.channels)) continue;
       for (const channel of item.channels) {
         jobs.push(
-          generateChannelContent(
+          generateChannelPosts(
             { keyIdea: item.keyIdea, channel, heroContent },
             projectSlug,
           ),
@@ -60,15 +61,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Run every generation in parallel. `allSettled` means one failed channel
-    // doesn't sink the whole batch — we return what succeeded and report the
-    // count that failed.
+    // Run every (idea × channel) job in parallel. `allSettled` means one
+    // failing (idea × channel) doesn't sink the whole batch — we flatten the
+    // arrays from the ones that succeeded and count failures at (idea × channel)
+    // granularity (so partially-failed decompositions don't count as multiple).
     const settled = await Promise.allSettled(jobs);
     const content: ChannelContent[] = [];
     let failures = 0;
     for (const result of settled) {
       if (result.status === "fulfilled") {
-        content.push(result.value);
+        content.push(...result.value);
       } else {
         failures += 1;
         console.error("[api/generate-channel-content] a job failed:", result.reason);

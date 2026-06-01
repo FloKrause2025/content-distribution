@@ -168,6 +168,13 @@ export interface ChannelContent {
    * other channel so they remain entirely unaffected by this field.
    */
   caption?: string;
+  /**
+   * Short label for which angle of the key idea this post takes (e.g. "The
+   * hidden cost", "What buyers actually need"). A single key idea can produce
+   * multiple posts per channel — one per distinct publishable angle. Optional
+   * because the safety-net case (no decomposition produced) leaves it unset.
+   */
+  angle?: string;
 }
 
 // ---------------------------------------------------------------------------

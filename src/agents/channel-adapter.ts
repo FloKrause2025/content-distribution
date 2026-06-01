@@ -4,11 +4,23 @@
  * AGENT 3 of 3 — the "Channel Content Adapter".
  *
  * Its job: take ONE key idea and produce ready-to-publish content for ONE
- * channel (e.g. a LinkedIn founder post, or an Instagram carousel). It injects
- * that channel's playbook so the output follows the right format and tone.
+ * channel. A key idea is a full argument that often contains MULTIPLE distinct
+ * publishable angles — so one (idea × channel) can yield up to 3 focused posts,
+ * not one bloated post that tries to cover everything.
  *
- * This agent is called many times — once for every (key idea × selected
- * channel) combination chosen by the user in step 2.
+ * The flow inside this agent is now TWO Claude calls (per idea × channel),
+ * followed by parallel post generation:
+ *
+ *   1. DECOMPOSE — identify the distinct publishable angles (1–3 of them).
+ *      Never fragments a single argument; never pads to 3. For the Instagram
+ *      Carousel, each angle must independently meet the playbook's carousel
+ *      bar; angles that don't qualify are dropped.
+ *
+ *   2. WRITE   — for every angle, generate one focused post that covers ONLY
+ *      that angle, following the channel playbook. Runs in parallel.
+ *
+ * This agent is still called once per (key idea × selected channel); a tight
+ * idea legitimately produces a single post (backward-compatible).
  *
  * Runs on the SERVER only (called from an API route).
  */
@@ -21,29 +33,120 @@ import {
   getChannel,
   type ChannelAdapterInput,
   type ChannelContent,
+  type ChannelDefinition,
+  type KeyIdea,
 } from "@/agents/types";
 
-export async function generateChannelContent(
-  input: ChannelAdapterInput,
-  projectSlug: string = DEFAULT_PROJECT_SLUG,
-): Promise<ChannelContent> {
-  const { keyIdea, channel, heroContent } = input;
+/** Internal shape: one decomposed angle of a key idea for a given channel. */
+interface AngleSpec {
+  /** Short 3-7 word label (e.g. "The hidden cost"). */
+  label: string;
+  /** The single sharp point the post will make (1-2 sentences). */
+  point: string;
+}
 
-  // Look up the channel definition so we know its playbook, format, etc.
-  const channelDef = getChannel(channel);
-  if (!channelDef) {
-    throw new Error(`Unknown channel "${channel}".`);
-  }
-
-  // Instagram Carousels get a dedicated `caption` field in the JSON output (the
-  // text posted alongside the slides). Every other channel is unaffected.
+/**
+ * STEP 1 — angle decomposition.
+ *
+ * Asks Claude to identify the DISTINCT publishable angles in the key idea for
+ * the given channel. Returns between 1 and 3. The brand voice guide and the
+ * channel's playbook are injected so the model understands what "publishable"
+ * means for this channel (especially the carousel bar).
+ */
+async function decomposeAngles(
+  keyIdea: KeyIdea,
+  channelDef: ChannelDefinition,
+  projectSlug: string,
+): Promise<AngleSpec[]> {
   const isCarousel = channelDef.id === "instagram-carousel";
 
-  const systemIntro = `You are an expert social media content writer for ${BRAND_NAME}. Your task is to take a single key idea and write a ready-to-publish ${channelDef.label}. Follow the format, tone, structure, and examples in the channel playbook EXACTLY. The output must be something the team can copy, paste, and publish with minimal editing.`;
+  const systemIntro = `You are a senior content strategist for ${BRAND_NAME}. Given a key idea and the channel playbook provided above, you identify the DISTINCT publishable angles the idea can yield as ${channelDef.label}s. You are conservative: a tight idea legitimately yields one angle.`;
 
-  const taskPrompt = `Create a ${channelDef.label} (${channelDef.format}) from the key idea below.
+  const taskPrompt = `Identify the DISTINCT publishable angles in the key idea below that can each stand alone as a focused ${channelDef.label} (${channelDef.format}).
+
+RULES:
+- Return BETWEEN 1 AND 3 angles. Only as many as are genuinely distinct.
+- Do NOT fragment a single argument into pieces. If the key idea is one tight argument, return exactly 1 angle.
+- Do NOT pad to reach 3. Fewer is better than forced.${isCarousel ? `
+- For this Instagram Carousel specifically, each angle MUST independently meet the playbook's carousel bar — a drawable structure (~5–8 slides), a strong cover hook, and a novel take. Skip any angle that wouldn't qualify on its own; returning fewer than 3 (or even 1) is correct when others don't meet the bar.` : ""}
 
 KEY IDEA:
+- Pillar: ${keyIdea.pillarLabel}
+- Core argument: ${keyIdea.coreArgument}
+- Supporting points:
+${keyIdea.supportingPoints.map((p) => `  - ${p}`).join("\n")}
+
+Return a JSON object with EXACTLY this shape:
+{
+  "angles": [
+    {
+      "label": "a 3-7 word label for the angle (e.g. 'The hidden cost', 'What buyers actually need')",
+      "point": "the single sharp point this post will make, 1-2 sentences"
+    }
+  ]
+}
+
+${JSON_ONLY_INSTRUCTION}`;
+
+  const { system, user } = await assemblePrompt(
+    projectSlug,
+    ["brand-voice-guide", channelDef.playbookDoc],
+    taskPrompt,
+    systemIntro,
+  );
+
+  const raw = await callClaude({
+    system,
+    user,
+    label: `channel-adapter:decompose:${channelDef.id}`,
+  });
+
+  const parsed = parseJsonResponse<{
+    angles?: Array<{ label?: unknown; point?: unknown }>;
+  }>(raw, `channel-adapter:decompose:${channelDef.id}`);
+
+  const rawAngles = Array.isArray(parsed.angles) ? parsed.angles : [];
+  const angles: AngleSpec[] = rawAngles
+    .map((a) => ({
+      label: typeof a.label === "string" ? a.label.trim() : "",
+      point: typeof a.point === "string" ? a.point.trim() : "",
+    }))
+    .filter((a) => a.point.length > 0)
+    .slice(0, 3); // Hard cap at 3, even if the model returned more.
+
+  // Safety net: if the model returns nothing usable, treat the whole key idea
+  // as a single un-labeled angle so we still produce one post (the legacy,
+  // pre-decomposition behaviour).
+  if (angles.length === 0) {
+    return [{ label: "", point: keyIdea.coreArgument }];
+  }
+  return angles;
+}
+
+/**
+ * STEP 2 — write one focused post for ONE angle of the key idea.
+ *
+ * Called once per angle by `generateChannelPosts`. Runs in parallel for every
+ * angle the decomposition produced.
+ */
+async function writeAnglePost(
+  keyIdea: KeyIdea,
+  channelDef: ChannelDefinition,
+  angle: AngleSpec,
+  heroContent: string,
+  projectSlug: string,
+): Promise<ChannelContent> {
+  const isCarousel = channelDef.id === "instagram-carousel";
+
+  const systemIntro = `You are an expert social media content writer for ${BRAND_NAME}. Your task is to take ONE angle of a key idea and write a ready-to-publish ${channelDef.label}. Follow the format, tone, structure, and examples in the channel playbook EXACTLY. The output must be something the team can copy, paste, and publish with minimal editing.`;
+
+  const taskPrompt = `Create a ${channelDef.label} (${channelDef.format}) that focuses on ONE angle of the key idea below.
+
+ANGLE FOCUS (this is what the post is about):
+- Label: ${angle.label || "(no label provided)"}
+- Point: ${angle.point}
+
+KEY IDEA (background context only — do NOT try to cover it all):
 - Pillar: ${keyIdea.pillarLabel}
 - Core argument: ${keyIdea.coreArgument}
 - Supporting points:
@@ -53,6 +156,8 @@ ORIGINAL HERO CONTENT (for reference only — do not copy verbatim):
 """
 ${heroContent}
 """
+
+IMPORTANT: This post must cover ONLY the angle above. Do NOT try to cover the rest of the key idea — other angles are being written as separate posts. Stay tight to the angle's point.
 
 Write the ${channelDef.format} now, following the playbook precisely.
 
@@ -69,7 +174,6 @@ IMPORTANT: For this Instagram Carousel, the "content" field MUST contain ONLY th
 
 ${JSON_ONLY_INSTRUCTION}`;
 
-  // Inject the brand voice guide PLUS this channel's specific playbook.
   const { system, user } = await assemblePrompt(
     projectSlug,
     ["brand-voice-guide", channelDef.playbookDoc],
@@ -80,15 +184,16 @@ ${JSON_ONLY_INSTRUCTION}`;
   const raw = await callClaude({
     system,
     user,
-    label: `channel-adapter:${channel}`,
+    label: `channel-adapter:write:${channelDef.id}`,
   });
+
   const parsed = parseJsonResponse<{
     content?: string;
     hookLine?: string;
     cta?: string;
     estimatedLength?: string;
     caption?: string;
-  }>(raw, `channel-adapter:${channel}`);
+  }>(raw, `channel-adapter:write:${channelDef.id}`);
 
   return {
     id: randomUUID(),
@@ -101,8 +206,42 @@ ${JSON_ONLY_INSTRUCTION}`;
     hookLine: parsed.hookLine ?? "",
     cta: parsed.cta ?? "",
     estimatedLength: parsed.estimatedLength ?? "",
+    // Set angle only when there is actually a label, so the safety-net case
+    // (decomposition produced nothing) leaves it undefined.
+    ...(angle.label ? { angle: angle.label } : {}),
     // Caption is set ONLY for the Instagram Carousel; left undefined elsewhere
     // so non-carousel channels remain entirely unaffected.
     ...(isCarousel ? { caption: parsed.caption ?? "" } : {}),
   };
+}
+
+/**
+ * Public entry point. For one (key idea × channel), decompose into 1–3 angles
+ * and write one focused post per angle in parallel. Returns the array of posts.
+ *
+ * Replaces the previous one-in-one-out adapter implementation. A tight idea
+ * still yields exactly one post (backward-compatible).
+ */
+export async function generateChannelPosts(
+  input: ChannelAdapterInput,
+  projectSlug: string = DEFAULT_PROJECT_SLUG,
+): Promise<ChannelContent[]> {
+  const { keyIdea, channel, heroContent } = input;
+
+  const channelDef = getChannel(channel);
+  if (!channelDef) {
+    throw new Error(`Unknown channel "${channel}".`);
+  }
+
+  // 1. Decomposition (1 Claude call).
+  const angles = await decomposeAngles(keyIdea, channelDef, projectSlug);
+
+  // 2. Write each angle in parallel (N Claude calls).
+  const posts = await Promise.all(
+    angles.map((angle) =>
+      writeAnglePost(keyIdea, channelDef, angle, heroContent, projectSlug),
+    ),
+  );
+
+  return posts;
 }
