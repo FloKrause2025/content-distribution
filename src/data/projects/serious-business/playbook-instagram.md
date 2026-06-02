@@ -8,7 +8,7 @@
 Instagram (@seriousbusiness.agency)
 
 ## Format
-Carousels only. No Reels, stories, or single images.
+Carousels only. No other Instagram formats.
 
 ## Audience on This Channel
 The decision-makers at B2B tech scaleups — founders and Heads of Marketing, typically Series A/B. They can hire us and already feel the problem: a product ahead of its brand, fuzzy positioning, a story that hasn't kept up. Not peers, junior designers, or other agencies. Because they already understand the issue, don't explain branding from zero. Show we understand their world — scaleup pressure, board and investor expectations, the product-vs-brand gap. Write to someone sharp and short on time who's seen every generic "branding matters" post already.
