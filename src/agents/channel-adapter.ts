@@ -188,7 +188,17 @@ Return a JSON object with EXACTLY these fields:
   "caption": "the Instagram caption that hooks the reader into the carousel — the text posted alongside the slides, NOT the slide text itself"` : ""}
 }${isCarousel ? `
 
-IMPORTANT: For this Instagram Carousel, the "content" field MUST contain ONLY the labeled slides. The caption MUST go in the separate "caption" field above and MUST NOT also appear inside "content".` : ""}
+IMPORTANT: For this Instagram Carousel, the "content" field MUST contain ONLY the labeled slides. The caption MUST go in the separate "caption" field above and MUST NOT also appear inside "content".
+
+BRIEF MINDSET: The output is a BRIEF for a design agency, not finished slide copy. The design team will turn each slide into the actual visual — font, size, layout, imagery. Your job per slide is the MINIMUM CONTENT that still carries the full value (the single point that slide must make). More words from us means less room for them. Strip throat-clearing, qualifiers, and set-up. Glanceable, not readable.
+
+WORD BUDGETS PER SLIDE (hard limits — never exceed):
+- Cover: max 10 words. One line, the whole hook.
+- Prose slides (Tension, Synthesis, Make It Concrete, any body slide): max 25 words. Two or three short sentences at most.
+- List / Reframe slides: intro max 8 words, then max 3 items, each a phrase of max 7 words. Items are PHRASES, never full sentences with their own explanation.
+- Proof: max 30 words. One number/result, one consequence.
+- CTA: max 25 words including the question.
+If a point genuinely cannot fit its budget without losing value, SPLIT it into two slides — never overflow a single slide.` : ""}
 
 ${JSON_ONLY_INSTRUCTION}`;
 
